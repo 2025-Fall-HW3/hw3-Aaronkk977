@@ -62,7 +62,16 @@ class EqualWeightPortfolio:
         """
         TODO: Complete Task 1 Below
         """
-
+        # Equal Weight: Each asset has weight 1/m, where m is the number of assets
+        m = len(assets)
+        equal_weight = 1.0 / m
+        
+        # Set equal weights for all time points
+        for asset in assets:
+            self.portfolio_weights[asset] = equal_weight
+        
+        # Set weight to 0 for excluded assets (e.g., SPY)
+        self.portfolio_weights[self.exclude] = 0
         """
         TODO: Complete Task 1 Above
         """
@@ -113,9 +122,28 @@ class RiskParityPortfolio:
         """
         TODO: Complete Task 2 Below
         """
-
-
-
+        # Risk Parity: Weight is inversely proportional to volatility
+        # w_i = (1/sigma_i) / sum(1/sigma_j)
+        
+        for i in range(self.lookback + 1, len(df)):
+            # Get historical returns within the lookback window
+            R_n = df_returns.copy()[assets].iloc[i - self.lookback : i]
+            
+            # Calculate standard deviation (volatility) for each asset
+            sigmas = R_n.std()
+            
+            # Calculate inverse volatility
+            # Add small epsilon to avoid division by zero (unlikely for S&P 500 sectors)
+            inv_sigmas = 1.0 / (sigmas + 1e-10)
+            
+            # Normalize weights to sum to 1
+            weights = inv_sigmas / inv_sigmas.sum()
+            
+            # Assign weights to corresponding assets
+            self.portfolio_weights.loc[df.index[i], assets] = weights.values
+        
+        # Set weight to 0 for excluded assets (e.g., SPY)
+        self.portfolio_weights[self.exclude] = 0
         """
         TODO: Complete Task 2 Above
         """
@@ -187,12 +215,27 @@ class MeanVariancePortfolio:
                 """
                 TODO: Complete Task 3 Below
                 """
-
-                # Sample Code: Initialize Decision w and the Objective
-                # NOTE: You can modify the following code
-                w = model.addMVar(n, name="w", ub=1)
-                model.setObjective(w.sum(), gp.GRB.MAXIMIZE)
-
+                # Mean-Variance Optimization:
+                # max: w^T * mu - (gamma/2) * w^T * Sigma * w
+                # s.t.: sum(w) = 1, w >= 0 (long-only, no leverage)
+                
+                # Decision variable: weight vector w, range [0, 1]
+                w = model.addMVar(n, name="w", lb=0, ub=1)
+                
+                # Objective function: maximize w^T * mu - (gamma/2) * w^T * Sigma * w
+                # Gurobi uses quadratic form: w^T @ Sigma @ w
+                portfolio_return = w @ mu
+                portfolio_variance = w @ Sigma @ w
+                
+                # Set objective function (maximize)
+                model.setObjective(
+                    portfolio_return - (gamma / 2) * portfolio_variance,
+                    gp.GRB.MAXIMIZE
+                )
+                
+                # Constraint: weights sum to 1 (no leverage)
+                model.addConstr(w.sum() == 1, name="budget")
+                
                 """
                 TODO: Complete Task 3 Above
                 """
